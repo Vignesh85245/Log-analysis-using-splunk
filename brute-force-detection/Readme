@@ -76,6 +76,64 @@ T1110	             Brute Force	            Adversaries attempt multiple password
 
 This detection aligns with T1110.001 – Password Guessing.
 
+               ┌──────────────────────────────┐
+               │   Linux Machine (Kali)       │
+               │ /var/log/auth.log            │
+               └──────────────┬───────────────┘
+                              │
+                              ▼
+                 Extract failed login events
+       ┌────────────────────────────────────────────┐
+       │ grep -i "password check failed" auth.log   │
+       └──────────────────────┬──────────────────────┘
+                              │
+                              ▼
+                   Upload filtered logs to Splunk
+           ┌──────────────────────────────────────┐
+           │   Splunk Add Data → Upload File      │
+           │   sourcetype=syslog, index=main      │
+           └───────────────────┬──────────────────┘
+                               │
+                               ▼
+                 Parse and search failed events
+           ┌──────────────────────────────────────┐
+           │  index=main "password check failed"  │
+           └───────────────────┬──────────────────┘
+                               │
+                               ▼
+               Extract username from raw logs
+           ┌──────────────────────────────────────┐
+           │ rex field=_raw                       │
+           │ "password check failed for user      │
+           │   \((?<user>[^)]+)\)"                │
+           └───────────────────┬──────────────────┘
+                               │
+                               ▼
+              Group events into time buckets
+           ┌──────────────────────────────────────┐
+           │ bucket _time span=1m                 │
+           └───────────────────┬──────────────────┘
+                               │
+                               ▼
+          Count failed attempts per user & host
+           ┌──────────────────────────────────────┐
+           │ stats count by _time, user, host     │
+           └───────────────────┬──────────────────┘
+                               │
+                               ▼
+                Apply brute-force threshold
+           ┌──────────────────────────────────────┐
+           │ where count >= 5                     │
+           └───────────────────┬──────────────────┘
+                               │
+                               ▼
+                   Detection Triggered
+       ┌────────────────────────────────────────────┐
+       │     Brute Force Login Attempt Detected     │
+       │       (MITRE ATT&CK T1110 – Brute Force)   │
+       └────────────────────────────────────────────┘
+
+
 Status
 ✔ Completed
 ✔ Tested on real logs
