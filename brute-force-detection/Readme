@@ -1,0 +1,87 @@
+Brute-Force Attack Detection Using Splunk
+
+Project Type: Log Analysis • SOC Detection Engineering
+MITRE Technique: T1110 – Brute Force
+Platform: Kali Linux + Splunk Enterprise
+
+Overview
+
+This project demonstrates how to detect brute-force authentication attempts by analyzing Linux auth.log and building a detection rule in Splunk.
+
+I generated real failed login attempts on my own Kali Linux machine, ingested the logs into Splunk, extracted fields using regex, grouped events into time buckets, and applied alert logic similar to what SOC analysts use in real environments.
+
+Log Source
+Linux Authentication Log: /var/log/auth.log
+
+Filtered using: grep -i "password check failed" /var/log/auth.log
+
+This extracts all failed login attempts triggered during simulation.
+
+Steps Performed
+1️ Extract Failed Login Events
+
+Filtered only authentication failures:
+grep -i "password check failed" /var/log/auth.log
+Uploaded the log file into Splunk (index = main).
+
+2️ Search for Failed Authentication Events in Splunk
+index=main "password check failed"
+This retrieves all failure events from Linux auth logs.
+
+3️ Extract Username Using rex
+rex field=_raw "password check failed for user \((?<user>[^)]+)\)"
+This regex extracts the username from the raw log.
+
+4️ Group Events in 1-Minute Buckets
+bucket _time span=1m
+Helps identify repeated failures within a short time frame.
+
+5️ Count Failed Attempts per User & Host
+stats count by _time, user, host
+SOC analysts use this to identify abnormal spikes.
+
+6️ Apply Detection Threshold
+where count >= 5
+Alerts when there are ≥ 5 failed login attempts within 1 minute, indicating brute-force behaviour.
+
+Testing the Detection
+
+To validate the detection:
+
+ I manually attempted multiple wrong passwords on my machine.
+ These failed attempts generated authentic logs.
+ Splunk ingested them and correctly flagged spikes.
+
+This simulates a real brute-force attack scenario used in SOC investigations.
+
+Key Learnings
+
+*Linux log analysis (/var/log/auth.log)
+
+*Splunk search, filtering & raw log inspection
+
+*Regex-based field extraction using rex
+
+*Time-based event grouping using bucket
+
+*Threshold logic & detection engineering
+
+*MITRE ATT&CK mapping (T1110 – Brute Force)
+
+*Real SIEM workflow simulation
+
+MITRE ATT&CK Mapping
+Technique ID	     Name                     Description
+T1110	             Brute Force	            Adversaries attempt multiple passwords to gain access
+
+This detection aligns with T1110.001 – Password Guessing.
+
+Status
+✔ Completed
+✔ Tested on real logs
+✔ Ready for SIEM alerting
+✔ Suitable for SOC portfolio
+
+Author
+Vigneshwaran Murugesan
+Defensive Security • SOC • SIEM • Splunk
