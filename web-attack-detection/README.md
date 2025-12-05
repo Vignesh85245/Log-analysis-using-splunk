@@ -1,24 +1,24 @@
-Detecting Web Attacks in Splunk Using Self-Generated Logs (Full Hands-On SOC Project)
-XSS • SQL Injection • LFI • Recon • Brute Force — All Detected Using Splunk
+Detecting Web Attacks in Splunk Using Self-Generated Logs
+(Full Hands-On SOC Project: XSS • SQL Injection • LFI • Recon • Brute Force)
 
 As part of my SOC learning pathway, I wanted to understand how real attacks appear in logs — not just theory.
-So instead of using pre-collected datasets, I decided to generate my own attack traffic on a Kali Linux machine, ingest it into Splunk, and build detections like a real SOC Analyst.
+Instead of using pre-collected datasets, I generated my own attack traffic on a Kali Linux machine, ingested it into Splunk, and built detections like a real SOC Analyst.
 
-This project covers:
+📌 Project Covers
 
- Brute-force login detection
+Brute-force login detection
 
- XSS detection
+XSS detection
 
- SQL Injection detection
+SQL Injection detection
 
- Directory Traversal / LFI detection
+Directory Traversal / LFI detection
 
- Reconnaissance pattern detection
+Reconnaissance pattern detection
 
- Creating alerts from attack spikes
+Creating alerts from attack spikes
 
- Challenges I faced & how I fixed them
+Challenges I faced & how I fixed them
 
 1. Setting Up the Environment
 
@@ -39,15 +39,15 @@ To simulate real-world adversary behavior, I wrote my own script (attack.sh) tha
 
 XSS injections
 
-SQL Injection payloads
+SQL injection payloads
 
 Directory Traversal / LFI
 
-Reconnaissance scans
+Recon scanning
 
-Rapid automated requests
+Automated repeated requests
 
-Attack Script:
+attack.sh
 #!/bin/bash
 
 # XSS
@@ -56,7 +56,7 @@ curl "http://localhost/search.php?q=<script>alert(1)</script>"
 # SQL Injection
 curl "http://localhost/product.php?id=1 UNION SELECT username,password FROM users"
 
-# LFI Attacks
+# LFI
 curl "http://localhost/index.php?page=../../../../etc/passwd"
 curl "http://localhost/index.php?page=php://filter/convert.base64-encode/resource=index.php"
 
@@ -67,163 +67,102 @@ curl "http://localhost/server-status"
 curl "http://localhost/randompage123"
 
 
-Then I executed it repeatedly:
+Executed repeatedly:
 
 for i in {1..50}; do ./attack.sh; done
 
+3. Issues I Faced (and Fixes)
+❌ 1. Permission Denied While Copying Logs
+cp: Permission denied
 
-This produced thousands of logs, perfect for SOC threat hunting.
 
-3. Issues I Faced While Generating Logs (And How I Fixed Them)
-    1.Permission denied while copying logs
-      cp: Permission denied
-      Fix: sudo cp /var/log/apache2/access.log /home/kali/access.log
+Fix:
 
-    2. Log file not showing in File Manager
-       Because ~ under root means /root, not /home/kali.
-       Fix: Copy file correctly.
+sudo cp /var/log/apache2/access.log /home/kali/access.log
 
-    3. Splunk misidentified sourcetype as "apache_error"
-       This caused incomplete field extraction.
-       Fix: Set sourcetype manually → apache:access
+❌ 2. Log Not Showing in File Manager
 
-   4. SQLi Not Detected Initially
-      Payloads were URL encoded:
-      %20UNION%20SELECT
-      Fix: eval decoded = urldecode(uri)
+~ under root means /root, not /home/kali.
 
-  5. "::1" Loopback IPv6 not matching regex
-     I was extracting only IPv4.
-     Fix: rex field=_raw "^(?<clientip>[^\s]+)"
+❌ 3. Splunk Mis-Detected Sourcetype
+
+Splunk set logs as apache_error.
+
+Fix: Manually selected apache:access
+
+❌ 4. SQL Injection Not Detected
+
+Payloads were URL-encoded (%20UNION%20SELECT).
+
+Fix:
+
+eval decoded = urldecode(uri)
+
+❌ 5. IPv6 (::1) Broke Regex
+
+Fix:
+
+rex field=_raw "^(?<clientip>[^\s]+)"
 
 4. Uploading Logs into Splunk
 
-Once logs were ready:
-I uploaded access.log
-Chose sourcetype → apache:access
-Indexed into → main
+Uploaded access.log
 
-Splunk ingested:
-1,737 total events
+Sourcetype → apache:access
 
-Clean, structured, searchable logs.
+Index → main
 
-5. Brute Force Detection (Authentication Logs)
-SPL Query
+Splunk ingested 1,737 total events.
+
+5. Brute-Force Detection
 index=main "password check failed"
 | rex field=_raw "user \((?<user>[^)]+)\)"
 | bucket _time span=1m
 | stats count by _time user host
 | where count >= 5
 
-
-This identified repeated failed login attempts — signature of brute-force.
-
 6. XSS Detection
-Simple keyword detection
 index=main sourcetype="apache:access"
 | search "<script>" OR "javascript:" OR "onerror="
 
-Structured output
-| table _time clientip method uri status useragent
-
-Timeline (attack spikes)
-| timechart span=1m count
-
 7. SQL Injection Detection
-Initial direct match
-index=main sourcetype="apache:access"
-| search "UNION SELECT" OR "' OR 1=1" OR "information_schema"
-
-
-Detected 0 events — because payloads were encoded.
-
-Decoded detection (working query)
-index=main sourcetype="apache:access"
-| rex field=_raw "\"(?<method>GET|POST) (?<uri>\S+)"
-| eval decoded=urldecode(uri)
+Encoded payload fix
+| eval decoded = urldecode(uri)
 | where match(decoded,"(?i)(union|select|sleep|benchmark|outfile|load_file|1=1)")
-| table _time clientip decoded
-
-
-Now SQLi payloads were successfully detected.
 
 8. Directory Traversal / LFI Detection
-Basic detection
-index=main sourcetype="apache:access"
-| search "../" OR "/etc/passwd" OR "php://filter"
-
-
-Detected → 433 LFI attempts
-
-Stronger regex-based detection
-| eval decoded=urldecode(uri)
+| eval decoded = urldecode(uri)
 | where match(decoded,"(\.\./|/etc/passwd|php://filter)")
 
-Group by attacker IP
-| stats count AS attempts by clientip
-
-9. Reconnaissance Detection (Scanning Behavior)
-Searching common sensitive paths
+9. Reconnaissance Detection
 index=main sourcetype="apache:access"
-| search "wp-admin" OR "phpmyadmin" OR "/admin" OR "/server-status" OR ".git"
+| search "wp-admin" OR "phpmyadmin" OR "server-status" OR "/admin"
 
-Hits per endpoint
-| stats count by uri
+10. What I Learned
 
-Scan activity per IP
-| stats count AS scans by clientip
+Reading raw logs → understanding attacker behavior
 
-Recon timeline
-| eval is_recon=if(uri LIKE "%admin%" OR uri LIKE "%phpmyadmin%" OR uri LIKE "%wp-admin%" OR uri LIKE "%server-status%",1,0)
-| where is_recon=1
-| timechart span=1m count
+Regex + field extraction in Splunk
 
+URL decoding for encoded payloads
 
-Detected scanning bursts clearly.
+Building SOC-style detection rules
 
-10. What I Learned from This Project
+Time-based correlation (bucket, timechart)
 
-This hands-on lab taught me:
+Recon behavior analysis
 
-How real attacks appear in raw logs
-
-Seeing the exact payloads inside access.log was eye-opening.
-
-How to extract fields using regex (rex)
-
-Splunk becomes powerful when logs are structured.
-
-How to use urldecode() for encoded attacks
-
-A real SOC technique.
-
-How to build SOC-style detections
-
-With time buckets, thresholds, and grouping.
-
-How attackers perform recon
-
-Which URLs they target first.
-
-How to validate detection logic using timecharts
-
-Visual spikes confirm active attacks.
-
-How to think like a threat hunter
-
-Focus on patterns, not individual events.
+Thinking like a threat hunter
 
 11. Final Thoughts
 
-This project gave me a deep understanding of:
+This project helped me deeply understand how SIEM systems detect real-world attack patterns.
+I will keep expanding this repository with:
 
-Web attack patterns
+RCE detection
 
-How SIEM systems detect threats
+Malware beaconing analysis
 
-How blue teams monitor indicators
+MITRE ATT&CK mapping
 
-How to convert logs → insights → detections
-
-It was one of the most practical SOC exercises I’ve done, and I’ll continue adding more attack types and detection rules.
+Custom dashboards
